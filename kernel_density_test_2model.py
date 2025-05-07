@@ -14,9 +14,10 @@ parser.add_argument('--input', default="/mnt/ssd1/datasets/vineyards/vineye_leav
                     help='the directory to the source files')
 parser.add_argument('--model_path', default="/mnt/ssd1/szilard/projects/kernel_density/models/kde_healthy_v1.pkl",
                     help='Path to the model')
+parser.add_argument('--model_path2', default="/mnt/ssd1/szilard/projects/kernel_density/models/kde_healthy_v1.pkl",
+                    help='Path to the model2')
 parser.add_argument('--pred_folder', dest='pred_folder', default='./dataset/predicted_images/', type=str, help='where to save the predicted images.')
 parser.add_argument('--cs', dest='cs', default='rgb', type=str, help='color space: rgb, lab, luv, hls, hsv, ycrcb')
-parser.add_argument('--ood', dest='ood', default=False, type=bool, help='Are you searching for out of distribution pixels?')
 args = parser.parse_args()
 
 white_lower_range = np.array([245, 245, 245])
@@ -30,14 +31,19 @@ def parrallel_score_samples(kde, samples, thread_count=int(0.875 * multiprocessi
         return np.concatenate(p.map(kde.score_samples, np.array_split(samples, thread_count)))
 
 model = KernelDensity()
+model2 = KernelDensity()
 kd_savename = args.model_path
 print("Loading KD model from: " + kd_savename)
 model = joblib.load(kd_savename)
+kd_savename2 = args.model_path2
+print("Loading KD model from: " + kd_savename2)
+model2 = joblib.load(kd_savename2)
 #min_log_like = -7.3747 #v1
 # min_log_like = -10.590869388397683 #rgb
 # min_log_like=-6.898794532770312 # kde_dis_leaf_d 
-min_log_like=-7.4759998731592265 # kde_h_leaf_labinfield
-
+# min_log_like=-7.4759998731592265 # kde_h_leaf_labinfield
+min_log_like=-7.375134886936371
+min_log_like2=-6.898794532770312
 def processing(directory,filename):
     print(filename)
     image = cv2.imread(directory+"/"+filename,cv2.IMREAD_UNCHANGED)      
@@ -72,15 +78,12 @@ def processing(directory,filename):
     detect_image_heat = np.zeros((image.shape[0],image.shape[1]))
     print(image_test_filtered.shape)
     start = timeit.default_timer()
-    log_dens_test = parrallel_score_samples(model, image_test_filtered)     
+    log_dens_test = parrallel_score_samples(model, image_test_filtered)
+    log_dens_test2 = parrallel_score_samples(model2, image_test_filtered)     
     stop = timeit.default_timer()
     for i in range(log_dens_test.shape[0]):
-        if args.ood:
-            if log_dens_test[i]<min_log_like:
-                detect_image[coordinates_test[i,0],coordinates_test[i,1]]=(255,255,255)
-        else:
-            if log_dens_test[i]>min_log_like:
-                detect_image[coordinates_test[i,0],coordinates_test[i,1]]=(255,255,255)
+        if log_dens_test[i]<min_log_like and log_dens_test2[i]>=min_log_like2:
+            detect_image[coordinates_test[i,0],coordinates_test[i,1]]=(255,255,255)
      
     savename = args.pred_folder+filename
     cv2.imwrite(savename, detect_image)
